@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARC Raiders // Tactical Computer</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --arc-red: #ff3333;
+            --arc-bg: #0a0a0a;
+            --arc-panel: #141414;
+            --arc-text: #e0e0e0;
+            --arc-dim: #666;
+        }
+        body {
+            background-color: var(--arc-bg);
+            color: var(--arc-text);
+            font-family: 'Courier New', monospace; /* Estilo retro-tech */
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            color: var(--arc-red);
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            border-bottom: 2px solid var(--arc-red);
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+            font-size: 1.5rem;
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            max-width: 1200px;
+            width: 100%;
+            justify-content: center;
+        }
+        .panel {
+            background-color: var(--arc-panel);
+            border: 1px solid #333;
+            padding: 20px;
+            border-radius: 4px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        .controls {
+            flex: 1;
+            min-width: 300px;
+        }
+        .display {
+            flex: 2;
+            min-width: 300px;
+        }
+        
+        /* Controles */
+        label {
+            display: block;
+            margin-top: 15px;
+            color: var(--arc-red);
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        select, input[type="range"] {
+            width: 100%;
+            background: #222;
+            color: white;
+            border: 1px solid #444;
+            padding: 10px;
+            margin-top: 5px;
+            font-family: inherit;
+        }
+        .value-display {
+            float: right;
+            color: var(--arc-dim);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .stat-box {
+            background: #1a1a1a;
+            padding: 10px;
+            text-align: center;
+            border: 1px solid #333;
+        }
+        .stat-val {
+            font-size: 1.2rem;
+            font-weight: bold;
+            display: block;
+        }
+        .stat-label {
+            font-size: 0.7rem;
+            color: var(--arc-dim);
+            text-transform: uppercase;
+        }
+
+        /* Footer */
+        .footer {
+            margin-top: 30px;
+            font-size: 0.8rem;
+            color: #444;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>ARC Raiders // Tactical Analysis Tool</h1>
+
+    <div class="container">
+        <div class="panel controls">
+            <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;">CONFIGURACIÓN DE COMBATE</h3>
+            
+            <label>ARMA <span id="weapon-name-display" class="value-display"></span></label>
+            <select id="weaponSelect" onchange="updateAnalysis()">
+                </select>
+
+            <label>OBJETIVO <span id="target-display" class="value-display"></span></label>
+            <select id="targetSelect" onchange="updateAnalysis()">
+                <option value="0.4,100">Raider Ligero (HP 100 / Armor 40%)</option>
+                <option value="0.525,150" selected>Heavy Raider (HP 150 / Armor 52.5%)</option>
+                <option value="0,90">Wasp Drone (HP 90 / Armor 0%)</option>
+                <option value="0.525,100">Jugador PvP (HP 100 / Armor 52.5%)</option>
+            </select>
+
+            <label>TU PUNTERÍA: <span id="acc-display" class="value-display">50%</span></label>
+            <input type="range" id="accuracy" min="10" max="100" value="50" step="5" oninput="updateAnalysis()">
+            
+            <label>TIPO DE TIRO</label>
+            <select id="shotType" onchange="updateAnalysis()">
+                <option value="1">Cuerpo (1.0x)</option>
+                <option value="2.5">Cabeza (2.5x)</option>
+            </select>
+
+            <div style="margin-top: 20px; padding: 10px; background: #222; border-left: 3px solid var(--arc-red);">
+                <small style="color:#aaa;">INFO TÁCTICA:</small><br>
+                <span id="tactical-advice" style="font-size: 0.9rem;">Selecciona un arma...</span>
+            </div>
+        </div>
+
+        <div class="panel display">
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <span class="stat-val" id="res-bullets" style="color: #4db8ff;">--</span>
+                    <span class="stat-label">Balas Necesarias</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-val" id="res-ttk" style="color: var(--arc-red);">-- s</span>
+                    <span class="stat-label">Time To Kill (Real)</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-val" id="res-rpm">--</span>
+                    <span class="stat-label">RPM Real</span>
+                </div>
+            </div>
+
+            <canvas id="ttkChart"></canvas>
+        </div>
+    </div>
+
+    <div class="footer">
+        GENERATED BY GEMINI // ARC RAIDERS FAN TOOL // DATOS NO OFICIALES
+    </div>
+
+    <script>
+        // --- BASE DE DATOS (Nuestra investigación) ---
+        // Pen: 0.0=MuyDebil, 0.1=Debil, 0.2=Mod, 0.4=Fuerte
+        const weapons = [
+            { name: "Ferro (Rifle)", dmg: 40, rpm: 12, pen: 0.4, type: "Sniper" },
+            { name: "Rattler (AR)", dmg: 9, rpm: 500, pen: 0.2, type: "Auto" },
+            { name: "Kettle (AR Light)", dmg: 10, rpm: 535, pen: 0.0, type: "Auto" },
+            { name: "Stitcher (SMG)", dmg: 7, rpm: 675, pen: 0.0, type: "Auto" },
+            { name: "Anvil (Hand Cannon)", dmg: 40, rpm: 110, pen: 0.4, type: "Semi" },
+            { name: "Arpeggio (Burst)", dmg: 9.5, rpm: 350, pen: 0.2, type: "Burst" },
+            { name: "Il Toro (Shotgun)", dmg: 67.5, rpm: 45, pen: 0.1, type: "Shotgun" },
+            { name: "Burletta (Pistol)", dmg: 10, rpm: 400, pen: 0.0, type: "Semi" },
+            { name: "Renegade (Lever)", dmg: 35, rpm: 80, pen: 0.2, type: "Sniper" }
+        ];
+
+        // Inicializar Selector
+        const wSelect = document.getElementById('weaponSelect');
+        weapons.forEach((w, index) => {
+            let opt = document.createElement('option');
+            opt.value = index;
+            opt.innerHTML = w.name;
+            wSelect.appendChild(opt);
+        });
+
+        // Configuración de Chart.js
+        let myChart = null;
+
+        function initChart() {
+            const ctx = document.getElementById('ttkChart').getContext('2d');
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [], // Se llena dinámicamente (10% a 100%)
+                    datasets: [{
+                        label: 'Curva de Riesgo (TTK vs Puntería)',
+                        data: [],
+                        borderColor: '#ff3333',
+                        backgroundColor: 'rgba(255, 51, 51, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        fill: true,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    interaction: { intersect: false, mode: 'index' },
+                    scales: {
+                        x: { 
+                            title: { display: true, text: 'Tu Puntería (%)', color: '#666' },
+                            grid: { color: '#333' },
+                            ticks: { color: '#888' }
+                        },
+                        y: { 
+                            title: { display: true, text: 'Tiempo para Matar (Segundos)', color: '#666' },
+                            grid: { color: '#333' },
+                            ticks: { color: '#888' },
+                            min: 0
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#e0e0e0' } },
+                        tooltip: { backgroundColor: '#141414', titleColor: '#ff3333', bodyColor: '#fff', borderColor: '#333', borderWidth: 1 }
+                    }
+                }
+            });
+        }
+
+        // --- EL CEREBRO MATEMÁTICO ---
+        function calculateTTK(weapon, enemyArmor, enemyHp, accuracyDecimal, headShotMult) {
+            // 1. Calcular Daño Efectivo por Bala
+            // Fórmulas de Desmos: D * Head * (1 - max(0, Armor - Pen))
+            let mitigation = Math.max(0, enemyArmor - weapon.pen);
+            let damagePerHit = weapon.dmg * headShotMult * (1 - mitigation);
+            
+            // Caso borde: Si el daño es 0 o negativo (blindaje total), retorna infinito
+            if (damagePerHit <= 0) return Infinity;
+
+            // 2. Balas que DEBEN impactar para matar
+            let hitsNeeded = Math.ceil(enemyHp / damagePerHit);
+
+            // 3. Balas reales disparadas (Factor de Puntería)
+            // Si necesito 3 balas y tengo 50% puntería, disparo 6.
+            let shotsFired = Math.ceil(hitsNeeded / accuracyDecimal);
+
+            // 4. Tiempo
+            // (Disparos - 1) * (60 / RPM)
+            let time = (shotsFired - 1) * (60 / weapon.rpm);
+            return time < 0 ? 0 : time; // Evitar negativos si es 1 shot
+        }
+
+        function updateAnalysis() {
+            // Obtener inputs
+            const wIndex = document.getElementById('weaponSelect').value;
+            const weapon = weapons[wIndex];
+            
+            const targetVal = document.getElementById('targetSelect').value.split(',');
+            const targetArmor = parseFloat(targetVal[0]);
+            const targetHp = parseFloat(targetVal[1]);
+            
+            const accuracy = parseInt(document.getElementById('accuracy').value);
+            const accuracyDecimal = accuracy / 100;
+            
+            const headMult = parseFloat(document.getElementById('shotType').value);
+
+            // Actualizar textos UI
+            document.getElementById('acc-display').innerText = accuracy + "%";
+            
+            // --- CÁLCULO ACTUAL ---
+            const currentTTK = calculateTTK(weapon, targetArmor, targetHp, accuracyDecimal, headMult);
+            
+            // Calcular balas (solo para display)
+            let mitigation = Math.max(0, targetArmor - weapon.pen);
+            let dmg = weapon.dmg * headMult * (1 - mitigation);
+            let hits = dmg > 0 ? Math.ceil(targetHp / dmg) : "Inmune";
+            
+            // Mostrar Stats
+            document.getElementById('res-bullets').innerText = hits + " hits";
+            document.getElementById('res-rpm').innerText = weapon.rpm;
+            document.getElementById('res-ttk').innerText = (currentTTK === Infinity ? "IMPOSIBLE" : currentTTK.toFixed(2)) + " s";
+
+            // --- LÓGICA DE CONSEJOS TÁCTICOS ---
+            let advice = "";
+            if (currentTTK > 3) advice = "⚠️ ¡PELIGRO! Este enfrentamiento es suicida. El TTK es demasiado alto.";
+            else if (weapon.pen < targetArmor && weapon.rpm > 300) advice = "ℹ️ El enemigo resiste tus balas, pero tu cadencia compensa la falta de penetración.";
+            else if (hits <= 2) advice = "🔥 ¡INSTAKILL! Esta
